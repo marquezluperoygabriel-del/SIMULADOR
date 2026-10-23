@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Simulador de arranque con autotransformador</title>
+<style>
+*{box-sizing:border-box}
+:root{--bg:#0a1a33;--pn:#102a52;--ln:#27466f;--tx:#e8f0fb;--mu:#9fb4d3}
+body{margin:0;font:16px/1.45 system-ui,Segoe UI,sans-serif;background:var(--bg);color:var(--tx)}
+header{padding:10px 14px;background:#0f2447;border-bottom:1px solid var(--ln)}
+h1{font-size:18px;margin:0 0 8px}h2{font-size:17px;margin:0 0 4px;letter-spacing:.5px}h3{font-size:15px;margin:14px 0 4px}
+main{max-width:1100px;margin:auto;padding:12px}
+.row{display:flex;flex-wrap:wrap;gap:8px}
+.bt{min-height:46px;padding:8px 14px;border:1px solid #2f5084;border-radius:10px;background:#16315b;color:var(--tx);font-size:15px;cursor:pointer}
+.bt.on{background:#f5d742;color:#111;border-color:#f5d742}.bt:disabled{opacity:.4}
+.bt.go{background:#1d7a4a;border-color:#2fb36d}.bt.rd{background:#8a2b2b;border-color:#d45}
+.pn{background:var(--pn);border:1px solid var(--ln);border-radius:14px;padding:12px;margin-bottom:12px}
+[hidden]{display:none!important}
+#sim{display:grid;gap:12px}@media(min-width:850px){#sim{grid-template-columns:1.1fr 1fr;align-items:start}}
+.sub{color:var(--mu);font-size:13px;margin-bottom:6px}
+svg{width:100%;height:auto;max-height:78vh;display:block;margin:auto}
+.w{fill:none;stroke-width:4;stroke-linecap:round;stroke-linejoin:round;transition:stroke .3s,fill .3s}
+.bl{stroke:#e8f0fb;stroke-width:3;stroke-linecap:round;transition:transform .35s;transform-origin:0 0}.bl.o{transform:rotate(-28deg)}
+.d{fill:#e8f0fb}.lk{stroke:#7aa2d8;stroke-dasharray:4 3;stroke-width:1.5}
+.cl{fill:#16315b;stroke:#7aa2d8;stroke-width:1.5;transition:.3s}.cl.on{fill:#f5d742;stroke:#fff;filter:drop-shadow(0 0 6px #f5d742)}
+text{fill:#e8f0fb;font-size:11px}.ct{text-anchor:middle;font-weight:700}.cl.on+text{fill:#111}
+.fz{fill:#102a52;stroke:#e8f0fb;stroke-width:2}.fz.bad{fill:#ff4d4d;stroke:#ff4d4d;stroke-dasharray:3}
+.mot{fill:#0b1b34;stroke-width:4;transition:stroke .3s}
+.rot{animation:sp 1s linear infinite;transform-origin:0 0}@keyframes sp{to{transform:rotate(360deg)}}
+#sp{animation:bk .25s infinite}@keyframes bk{50%{opacity:.15}}
+@media(prefers-reduced-motion:reduce){.rot{animation-duration:4s!important}}
+.leg{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px;margin-top:6px}.leg i{display:inline-block;width:22px;height:5px;border-radius:3px;margin-right:5px;vertical-align:middle}
+.note{font-size:12px;color:var(--mu);margin:6px 0 0}
+.msg{padding:8px 10px;border-radius:8px;margin-top:8px;font-size:14px;background:#14407a}.msg.err{background:#7a1f1f}.msg.warn{background:#7a5a10}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:15px}.kv b{color:var(--mu);font-weight:500}
+table{border-collapse:collapse;width:100%;font-size:14px;display:block;overflow-x:auto}td,th{border:1px solid var(--ln);padding:5px 7px;text-align:left;vertical-align:top}th{background:#16315b}
+details{margin:6px 0;background:#0e2346;border-radius:8px;padding:6px 10px}summary{cursor:pointer;min-height:32px}
+select{min-height:44px;font-size:15px;border-radius:10px;background:#16315b;color:var(--tx);border:1px solid #2f5084;padding:0 8px}
+ol,ul{padding-left:20px;margin:4px 0}
+</style></head><body>
+<header><h1>Simulador: arranque con autotransformador</h1>
+<div class="row"><button class="bt" id="e1">Ejercicio 1 · 2 TAP</button><button class="bt" id="e2">Ejercicio 2 · inversión de giro</button>
+<button class="bt" id="tTeo">Teoría</button><button class="bt" id="tSim">Simulación</button></div></header>
+<main>
+<section id="teo"></section>
+<section id="sim" hidden>
+ <div class="pn"><h2>ESQUEMA (POTENCIA)</h2><div class="sub">CIRCUITO DE POTENCIA · 380 V; 50 Hz</div>
+  <svg id="svg"></svg>
+  <div class="leg" id="leg"></div>
+  <p class="note">Giro animado: solo ilustrativo, no es un cálculo físico.</p></div>
+ <div>
+  <div class="pn"><h2>Estado</h2><div class="kv" id="stat"></div><div class="msg" id="msg"></div></div>
+  <div class="pn"><h2>Contactores (modo libre)</h2><div class="row" id="kb"></div>
+   <div class="row" id="dirbox" style="margin-top:8px"><label>Giro (guiado): <select id="dir"><option value="D">Horario (D)</option><option value="I">Antihorario (I)</option></select></label></div></div>
+  <div class="pn"><h2>Modo guiado</h2><div class="row">
+   <button class="bt go" id="nx">Siguiente paso</button><button class="bt go" id="au">Automático ▶</button>
+   <button class="bt" id="pa">Parar</button><button class="bt" id="rs">Reiniciar</button><button class="bt rd" id="rf">Reponer fusibles</button></div></div>
+ </div>
+</section></main>
+<script>
+/* ===== CONFIGURACIÓN EDITABLE ===== */
+const CFG={
+ COL:{0:'#5d6b82',380:'#f5d742',330:'#ff9a2e',195:'#3fd8ff'}, // gris, amarillo, naranja, cian
+ NOM:{A:'A',B:'B',D:'D',I:'I',G:'G',H:'H'},               // letras de los contactores de TAP (G y H en el esquema)
+ TAP1_EX1:195,TAP2_EX1:330,TAP1_EX2:330,                      // tensiones de derivación (V)
+ CRUCE_I:[2,1,0],   // contactor I: salida de la fase i va a la fase CRUCE_I[i] del motor (R↔T cruzadas). AJUSTAR si el esquema difiere
+ AUTO_MS:1800
+};
+/* ===== DATOS DE LOS EJERCICIOS ===== */
+// K: id -> [nodoA,nodoB,descripción]. Nodos: S=tras fusibles, P=bus tras D/I, M=bornes motor, AT=entrada autotrafo, Tn=derivaciones
+const EX={
+1:{t:'Ejercicio 1 · Arranque con autotransformador – 2 TAP',
+ K:{A:['S','M','Marcha 380 V'],B:['S','AT','Autotransformador'],G:['T2','M','TAP2 '+CFG.TAP2_EX1+' V'],H:['T1','M','TAP1 '+CFG.TAP1_EX1+' V']},
+ taps:{T1:CFG.TAP1_EX1,T2:CFG.TAP2_EX1},tapIds:['G','H'],
+ R:[['A','B',[190,112],'A y B a la vez: la red de 380 V queda unida al autotransformador y al motor (conexión indebida, riesgo de cortocircuito).'],
+    ['A','H',[110,300],'A (380 V) con H (195 V): dos tensiones distintas en los bornes del motor → cortocircuito sobre el devanado.'],
+    ['A','G',[110,240],'A (380 V) con G (330 V): dos tensiones distintas en los bornes del motor → cortocircuito sobre el devanado.'],
+    ['G','H',[290,274],'G y H a la vez: se unen dos derivaciones (195 V y 330 V) del mismo devanado → cortocircuito entre espiras.']],
+ steps:()=>[{c:[],t:'Reposo: todo abierto, 0 V.'},{c:['B','H'],t:'B + H: autotransformador alimentado, motor a 195 V.'},
+  {c:['B','G'],t:'Se abre H y se cierra G (B sigue): 330 V.'},{c:['A'],t:'Se abren G y B, se cierra A: 380 V, régimen normal.'}],
+ draw:draw1},
+2:{t:'Ejercicio 2 · Arranque con autotransformador e inversión de giro',
+ K:{D:['S','P','Giro directo (horario)'],I:['S','P','Giro inverso (antihorario)'],A:['P','M','Marcha 380 V'],B:['P','AT','Autotransformador'],H:['T1','M','TAP '+CFG.TAP1_EX2+' V']},
+ taps:{T1:CFG.TAP1_EX2},tapIds:['H'],
+ R:[['D','I',[140,186],'D e I a la vez: dos fases quedan cortocircuitadas entre sí (I cruza dos fases) → cortocircuito fase-fase.'],
+    ['A','B',[200,226],'A y B a la vez: la red de 380 V queda unida al autotransformador y al motor (conexión indebida, riesgo de cortocircuito).'],
+    ['A','H',[110,374],'A (380 V) con H (330 V): dos tensiones distintas en los bornes del motor → cortocircuito sobre el devanado.']],
+ steps:d=>[{c:[],t:'Reposo: todo abierto, 0 V.'},{c:[d],t:'Giro elegido: cierra '+d+' ('+(d=='D'?'horario':'antihorario')+'). Motor aún sin tensión.'},
+  {c:[d,'B','H'],t:'B + H: motor a 330 V.'},{c:[d,'A'],t:'Se abren H y B, se cierra A: 380 V, régimen normal.'}],
+ draw:draw2}};
+/* ===== TEORÍA ===== */
+const TH={
+1:{obj:'Reducir la corriente de arranque de un motor asíncrono trifásico de jaula alimentándolo con tensión reducida desde un autotransformador; cuando el motor acelera se pasa a plena tensión (380 V). Aplicación típica: bombas, ventiladores y compresores de media potencia.',
+ comp:[['R-S-T (N)','Red 380 V/50 Hz; el neutro (punteado) no se usa','1','Alimenta los fusibles'],['F','Fusibles de protección','3','Red → contactores'],
+ ['A','Contactor tripolar, marcha directa a 380 V','1','Fusibles → U-V-W'],['B','Contactor tripolar del autotransformador','1','Fusibles → entrada del autotrafo'],
+ ['Autotrafo','Trifásico, estrella fija; TAP2 = 330 V y TAP1 = 195 V','1','Entrada por B; neutro común'],
+ ['G','Contactor tripolar de TAP2 (330 V)','1','TAP2 → motor'],['H','Contactor tripolar de TAP1 (195 V)','1','TAP1 → motor'],['M','Motor asíncrono de jaula (U, V, W)','1','Bornes del motor']],
+ tot:'Total: 4 contactores tripolares.',
+ seq:['Reposo: todo abierto.','Se cierran B y H: el autotransformador se alimenta y el motor arranca a 195 V.','Se abre H y se cierra G (B sigue): 330 V.','Se abren G y B y se cierra A: 380 V, régimen normal.'],
+ taps:[195,330],
+ forb:['A con B, G o H: se une la red de 380 V con el autotransformador o con una derivación de menor tensión → cortocircuito.','G con H: se unen dos puntos del mismo devanado (195 y 330 V) → cortocircuito entre espiras.','Advertencia: G o H sin B: el autotransformador no tiene tensión y el motor queda parado.'],
+ q:[['¿Qué fracción de la corriente de arranque directo se toma de la red a 195 V?','k = 195/380 ≈ 0,51; I ≈ k²·I_arranque ≈ 0,26 (≈ 26 %).'],['¿Qué pasa si se cierran G y H a la vez?','Cortocircuito entre dos tomas del devanado: se funden los fusibles.'],['¿Cuál es el inconveniente de arrancar con tensión reducida?','El par cae con k² (≈ 26 % a 195 V): puede no arrancar con carga alta.']]},
+2:{obj:'Igual que el Ejercicio 1 (arranque a tensión reducida con autotransformador), pero con inversión del sentido de giro mediante los contactores D (directo) e I (inverso). Aplicación: cintas, puentes grúa y máquinas que giran en ambos sentidos.',
+ comp:[['R-S-T (N)','Red 380 V/50 Hz; neutro no usado','1','Alimenta los fusibles'],['F','Fusibles de protección','3','Red → D / I'],
+ ['D','Contactor tripolar, giro directo','1','Fusibles → bus de potencia'],['I','Contactor tripolar, giro inverso (dos fases cruzadas)','1','Fusibles → bus (R↔T cruzadas, ajustable)'],
+ ['A','Contactor tripolar, marcha a 380 V','1','Bus → U-V-W'],['B','Contactor tripolar del autotransformador','1','Bus → entrada del autotrafo'],
+ ['Autotrafo','Trifásico, estrella fija; TAP1 = 330 V','1','Entrada por B'],['H','Contactor tripolar de TAP (330 V)','1','TAP → motor'],['M','Motor asíncrono de jaula','1','Bornes del motor']],
+ tot:'Total: 5 contactores tripolares.',
+ seq:['Reposo: todo abierto.','Elegir giro: cerrar D (horario) o I (antihorario).','Se cierran B y H: el motor arranca a 330 V.','Se abren H y B y se cierra A: 380 V.','Para invertir el giro: Parar primero y volver a empezar.'],
+ taps:[330],
+ forb:['D con I: dos fases quedan unidas entre sí → cortocircuito fase-fase.','A con B o con H: se une la red de 380 V con el autotransformador o con la derivación → cortocircuito.','Advertencia: H sin B: motor sin tensión.'],
+ q:[['¿Por qué no pueden cerrar D e I a la vez?','Porque I cruza dos fases: se cortocircuitan entre sí.'],['¿Qué tensión recibe el motor con B + H?','330 V (k ≈ 0,87; par y corriente ≈ 0,75 de los valores directos).'],['¿Por qué hay que Parar antes de invertir el giro?','Para no cerrar D e I a la vez y dejar que el motor se detenga.']]}};
+function th(n){const d=TH[n],f=v=>v.toFixed(2).replace('.',',');
+ let h='<div class="pn"><h2>'+EX[n].t+'</h2><h3>a) Objetivo y aplicación</h3><p>'+d.obj+'</p><h3>b) Componentes</h3><table><tr><th>Etiqueta</th><th>Nombre y función</th><th>Cant.</th><th>Se conecta</th></tr>'+
+ d.comp.map(r=>'<tr>'+r.map(c=>'<td>'+c+'</td>').join('')+'</tr>').join('')+'</table><p>'+d.tot+'</p>'+
+ '<h3>c) Funcionamiento paso a paso</h3><ol>'+d.seq.map(s=>'<li>'+s+'</li>').join('')+'</ol>'+
+ '<h3>d) Cálculos ilustrativos (k = U_tap / 380)</h3><table><tr><th>U_tap</th><th>k</th><th>Par ∝ k²</th><th>I línea ≈ k²·I_arr</th></tr>'+
+ d.taps.map(u=>{const k=u/380;return'<tr><td>'+u+' V</td><td>'+f(k)+'</td><td>'+f(k*k)+'</td><td>'+f(k*k)+' · I_arr</td></tr>'}).join('')+'</table>'+
+ '<h3>e) Combinaciones prohibidas</h3><ul>'+d.forb.map(s=>'<li>'+s+'</li>').join('')+'</ul><h3>f) Autoevaluación</h3>'+
+ d.q.map(q=>'<details><summary>'+q[0]+'</summary>'+q[1]+'</details>').join('')+'</div>';
+ return h}
+/* ===== ESTADO ===== */
+const $=s=>document.querySelector(s),NS='http://www.w3.org/2000/svg',px=[40,80,120];
+let svg=$('#svg'),cur=1,tab='teo',timer=null;
+const fresh=()=>({closed:{},blown:false,last:null,step:0,mode:'guiado',dir:'D'}),st={1:fresh(),2:fresh()};
+const nm=id=>CFG.NOM[id]||id;
+/* ===== DIBUJO SVG ===== */
+function E(t,a,p){const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);(p||svg).appendChild(e);return e}
+function X(x,y,s,c){const e=E('text',{x,y,class:c||''});e.textContent=s;return e}
+function W(n,pts){E('polyline',{points:pts.map(p=>p.join(',')).join(' '),class:'w','data-n':n})}
+function dot(n,x,y){E('circle',{cx:x,cy:y,r:3.5,class:'w','data-n':n})}
+function pole(id,x,y,h,rot){const g=E('g',{transform:'translate('+x+','+y+') rotate('+(rot||0)+')'});
+ E('circle',{cx:0,cy:0,r:3,class:'d'},g);E('circle',{cx:0,cy:h,r:3,class:'d'},g);E('line',{x1:0,y1:0,x2:0,y2:h,class:'bl','data-k':id},g)}
+function coil(id,x,y){E('rect',{x,y:y-8,width:28,height:16,rx:3,class:'cl','data-k':id});X(x+14,y+4,nm(id),'ct')}
+function ctc(id,xs,y,h,cx){xs.forEach(x=>pole(id,x,y,h));E('line',{x1:xs[0],y1:y+h/2,x2:cx,y2:y+h/2,class:'lk'});coil(id,cx,y+h/2)}
+function tapc(id,node,rows,bxs,xin,h,cy){rows.forEach((ry,i)=>{W(node,[[bxs[i],ry],[xin,ry]]);pole(id,xin,ry,h,90);W('M',[[xin-h,ry],[px[i],ry]]);dot('M',px[i],ry)});
+ const lx=xin-h/2,up=cy<rows[0];E('line',{x1:lx,y1:up?rows[0]:rows[2],x2:lx,y2:up?cy+8:cy-8,class:'lk'});coil(id,lx-14,cy)}
+function wind(x,y0,y1){const p=[[x,y0]],n=Math.floor((y1-y0)/8);for(let i=0;i<n;i++)p.push([x+(i%2?-5:5),y0+8*i+4]);p.push([x,y1]);W('AT',p)}
+function head(){['R','S','T'].forEach((l,i)=>{const x=px[i];X(x-3,14,l);W('G',[[x,20],[x,60]]);E('rect',{x:x-6,y:60,width:12,height:24,class:'fz'})});X(px[2]+14,76,'F')}
+function motor(cx,cy,yM){const yT=cy-50;px.forEach((x,i)=>{W('M',[[x,yM],[x,yT],[cx+(i-1)*22,yT+20]]);X(x+6,yT-4,'UVW'[i])});
+ E('circle',{cx,cy,r:30,class:'mot','data-n':'M'});const g=E('g',{transform:'translate('+cx+','+cy+')'}),r=E('g',{class:'rot',id:'rot'},g);
+ [0,120,240].forEach(a=>E('line',{x1:0,y1:0,x2:0,y2:-20,stroke:'#e8f0fb','stroke-width':5,'stroke-linecap':'round',transform:'rotate('+a+')'},r));
+ E('circle',{r:5,fill:'#e8f0fb'},g);X(cx+38,cy-2,'M');E('text',{x:cx+38,y:cy+14,id:'sense'})}
+function spark(){const g=E('g',{id:'sp',style:'display:none'});E('polygon',{points:'0,-14 4,-4 14,0 4,4 0,14 -4,4 -14,0 -4,-4',fill:'#fff',stroke:'#ff4d4d','stroke-width':2},g)}
+function draw1(){const bx=[250,290,330];head();
+ px.forEach((x,i)=>{W('S',[[x,84],[x,150]]);dot('S',x,104+i*9);W('S',[[x,104+i*9],[bx[i],104+i*9],[bx[i],150]]);W('M',[[x,186],[x,400]]);W('N',[[bx[i],330],[bx[i],345]])});
+ W('N',[[bx[0],345],[bx[2],345]]);ctc('A',px,150,36,150);ctc('B',bx,150,36,372);
+ bx.forEach(x=>{W('AT',[[x,186],[x,196]]);wind(x,196,330)});X(bx[2]+8,260,'TAP2 '+CFG.TAP2_EX1+' V');X(bx[2]+8,310,'TAP1 '+CFG.TAP1_EX1+' V');X(240,362,'Autotransformador (estrella fija)');
+ tapc('G','T2',[230,244,258],bx,200,24,206);tapc('H','T1',[290,304,318],bx,200,24,340);motor(80,450,400);spark()}
+function draw2(){const bx=[300,340,380],ix=[170,210,250];head();
+ px.forEach((x,i)=>{W('S',[[x,84],[x,130]]);dot('S',x,96+i*10);W('S',[[x,96+i*10],[ix[i],96+i*10],[ix[i],130]]);
+  W('P',[[x,166],[x,270]]);dot('P',x,216+i*10);W('P',[[x,216+i*10],[bx[i],216+i*10],[bx[i],270]]);W('M',[[x,306],[x,470]]);W('N',[[bx[i],440],[bx[i],455]])});
+ W('N',[[bx[0],455],[bx[2],455]]);
+ ix.forEach((x,i)=>{const t=CFG.CRUCE_I[i],y=176+i*10;W('P',[[x,166],[x,y],[px[t],y]]);dot('P',px[t],y)});
+ ctc('D',px,130,36,130);ctc('I',ix,130,36,276);ctc('A',px,270,36,150);ctc('B',bx,270,36,404);
+ bx.forEach(x=>{W('AT',[[x,306],[x,316]]);wind(x,316,440)});X(bx[2]+8,372,'TAP1 '+CFG.TAP1_EX2+' V');X(300,472,'Autotransformador (estrella fija)');
+ tapc('H','T1',[360,374,388],bx,230,24,330);motor(80,520,470);spark()}
+/* ===== MOTOR DE ESTADOS: propagación de tensiones ===== */
+function solve(ex,s){const V={G:380,N:0,S:0,P:0,M:0,AT:0};for(const t in ex.taps)V[t]=0;
+ if(s.blown)return V;V.S=380;
+ for(let n=0;n<6;n++){for(const id in ex.K){if(!s.closed[id])continue;const[a,b]=ex.K[id];
+   if(V[a]&&!V[b]&&!ex.taps[b])V[b]=V[a];else if(V[b]&&!V[a]&&!ex.taps[a])V[a]=V[b]}
+  if(V.AT>0)for(const t in ex.taps)V[t]=ex.taps[t]}
+ return V}
+const col=v=>CFG.COL[v]||CFG.COL[0];
+function render(){const ex=EX[cur],s=st[cur];
+ const bad=ex.R.find(r=>s.closed[r[0]]&&s.closed[r[1]]);if(bad){s.blown=true;s.last=bad}
+ const V=solve(ex,s),vm=V.M;
+ svg.querySelectorAll('[data-n]').forEach(e=>{const c=col(V[e.dataset.n]);e.style.stroke=c;if(e.tagName=='circle'&&!e.classList.contains('mot'))e.style.fill=c});
+ svg.querySelectorAll('[data-k]').forEach(e=>{const cl=!!s.closed[e.dataset.k];if(e.tagName=='line')e.classList.toggle('o',!cl);else e.classList.toggle('on',cl)});
+ const fz=svg.querySelectorAll('.fz');fz.forEach(f=>f.classList.toggle('bad',s.blown));
+ const sp=$('#sp');if(sp){if(s.blown&&s.last){sp.style.display='';sp.setAttribute('transform','translate('+s.last[2][0]+','+s.last[2][1]+')')}else sp.style.display='none'}
+ const dir=cur==2?(s.closed.I?'ccw':s.closed.D?'cw':null):'cw';
+ const rot=$('#rot');rot.style.animationDuration=(2.4-2*vm/380)+'s';rot.style.animationDirection=dir=='ccw'?'reverse':'normal';rot.style.animationPlayState=vm?'running':'paused';
+ const sense=dir=='cw'?'↻ horario':dir=='ccw'?'↺ antihorario':'';$('#sense').textContent=vm?sense:'';
+ const ms=vm==0?'parado':vm==380?'régimen normal 380 V':'arranque a '+vm+' V';
+ const stp=s.mode=='libre'?'Modo libre':'Paso '+(s.step+1)+'/4 · '+ex.steps(s.dir)[s.step].t;
+ $('#stat').innerHTML='<b>Motor</b><span>'+ms+'</span><b>Tensión en bornes</b><span>'+vm+' V</span>'+(cur==2?'<b>Sentido de giro</b><span>'+(vm&&dir?(dir=='cw'?'horario':'antihorario'):dir?(dir=='cw'?'horario (sin tensión)':'antihorario (sin tensión)'):'—')+'</span>':'')+'<b>Paso actual</b><span>'+stp+'</span><b>Fusibles</b><span>'+(s.blown?'FUNDIDOS':'sanos')+'</span>';
+ const m=$('#msg');let txt='Circuito en orden.',cls='msg';
+ if(bad){txt='⚠ '+bad[3]+' Los fusibles F se han fundido: abra los contactores en conflicto y pulse «Reponer fusibles».';cls='msg err'}
+ else if(s.blown){txt='Fusibles fundidos: el motor no tiene tensión. Pulse «Reponer fusibles».';cls='msg err'}
+ else if(cur==2&&(s.closed.A||s.closed.B||s.closed.H)&&!s.closed.D&&!s.closed.I){txt='Advertencia: falta cerrar D o I (sentido de giro); el bus no tiene tensión y el motor queda sin tensión.';cls='msg warn'}
+ else if(ex.tapIds.some(i=>s.closed[i])&&!s.closed.B){txt='Advertencia: contactor de TAP cerrado sin B; el autotransformador no tiene tensión y el motor queda sin tensión.';cls='msg warn'}
+ m.className=cls;m.textContent=txt;
+ document.querySelectorAll('#kb .bt').forEach(b=>b.classList.toggle('on',!!s.closed[b.dataset.k]));
+ $('#nx').disabled=s.mode=='guiado'&&s.step>=3;$('#au').textContent=timer?'Detener ■':'Automático ▶'}
+/* ===== CONTROLES ===== */
+function setStep(n){const s=st[cur];s.step=n;s.mode='guiado';s.closed={};EX[cur].steps(s.dir)[n].c.forEach(i=>s.closed[i]=1)}
+function stopAuto(){clearInterval(timer);timer=null}
+function next(){const s=st[cur];if(s.blown){stopAuto();render();return}if(s.mode=='libre')s.step=0;if(s.step>=3){stopAuto();render();return}setStep(s.step+1);if(s.step>=3)stopAuto();render()}
+function toggle(id){stopAuto();const s=st[cur];s.mode='libre';s.closed[id]=!s.closed[id];render()}
+function build(){const ex=EX[cur];svg.innerHTML='';svg.setAttribute('viewBox',cur==1?'0 0 410 500':'0 0 460 570');ex.draw();
+ $('#kb').innerHTML=Object.keys(ex.K).map(k=>'<button class="bt" data-k="'+k+'">'+nm(k)+' · '+ex.K[k][2]+'</button>').join('');
+ document.querySelectorAll('#kb .bt').forEach(b=>b.onclick=()=>toggle(b.dataset.k));
+ $('#dirbox').style.display=cur==2?'':'none';$('#dir').value=st[cur].dir;
+ $('#leg').innerHTML=[[0,'Sin tensión'],[380,'380 V'],[330,'330 V'],[195,'195 V']].filter(l=>cur==1||l[0]!=195).map(l=>'<span><i style="background:'+col(l[0])+'"></i>'+l[1]+'</span>').join('');render()}
+function show(){$('#teo').hidden=tab!='teo';$('#sim').hidden=tab!='sim';$('#e1').classList.toggle('on',cur==1);$('#e2').classList.toggle('on',cur==2);
+ $('#tTeo').classList.toggle('on',tab=='teo');$('#tSim').classList.toggle('on',tab=='sim');$('#teo').innerHTML=th(cur);if(tab=='sim')build()}
+$('#e1').onclick=()=>{stopAuto();cur=1;show()};$('#e2').onclick=()=>{stopAuto();cur=2;show()};
+$('#tTeo').onclick=()=>{stopAuto();tab='teo';show()};$('#tSim').onclick=()=>{tab='sim';show()};
+$('#nx').onclick=()=>{stopAuto();next()};
+$('#au').onclick=()=>{if(timer){stopAuto();render();return}const s=st[cur];if(s.blown||s.mode=='libre'||s.step>=3)setStep(0);render();timer=setInterval(next,CFG.AUTO_MS)};
+$('#pa').onclick=()=>{stopAuto();const s=st[cur];s.closed={};s.step=0;s.mode='guiado';render()};
+$('#rs').onclick=()=>{stopAuto();const d=st[cur].dir;st[cur]=fresh();st[cur].dir=d;render()};
+$('#rf').onclick=()=>{const s=st[cur];s.blown=false;s.last=null;render()};
+$('#dir').onchange=e=>{const s=st[cur];if(s.step>0||s.closed.D||s.closed.I){e.target.value=s.dir;$('#msg').className='msg warn';$('#msg').textContent='Para invertir el giro, pulse Parar primero.';return}s.dir=e.target.value;render()};
+show();
+</script></body></html>
